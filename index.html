@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>
+    <script>
+        window.adsbygoogle = window.adsbygoogle || [];
+    </script>
+    <script>
+        function showInterstitial() {
+            if (window.adsbygoogle) {
+                adsbygoogle.push({
+                    google_ad_client: "ca-app-pub-3940256099942544",
+                    enable_page_level_ads: true
+                });
+            }
+        }
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Truncar Silencio PRO</title>
+    <meta name="google-adsense-account" content="ca-app-pub-3940256099942544">
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-app-pub-3940256099942544" crossorigin="anonymous"></script>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#7c3aed">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.all.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        * { 
+            -webkit-tap-highlight-color: transparent;
+            box-sizing: border-box;
+        }
+        body { 
+            background: #0f172a; 
+            color: white; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            touch-action: manipulation;
+            overscroll-behavior: contain;
+            margin: 0;
+            padding: 0;
+        }
+        .card-pro { 
+            background: rgba(30, 41, 59, 0.85); 
+            border: 1px solid rgba(168, 85, 247, 0.3); 
+            backdrop-filter: blur(15px);
+            will-change: transform;
+        }
+        .progress-bar-fill { 
+            transition: width 0.3s ease-in-out;
+            will-change: width;
+        }
+        button {
+            touch-action: manipulation;
+            -webkit-user-select: none;
+            user-select: none;
+            cursor: pointer;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        label {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+
+        function App() {
+            const [file, setFile] = useState(null);
+            const [isProc, setIsProc] = useState(false);
+            const [prog, setProg] = useState(0);
+            const [url, setUrl] = useState(null);
+            const audioCtx = useRef(null);
+            const fileInputRef = useRef(null);
+
+            const THRESHOLD = -30; 
+            const DURATION = 0.6;
+
+            useEffect(() => {
+                // Limpiar URLs cuando el componente se desmonte
+                return () => {
+                    if (url) URL.revokeObjectURL(url);
+                };
+            }, [url]);
+
+            const handleFileChange = (e) => {
+                const selectedFile = e.target.files[0];
+                if (selectedFile) {
+                    if (url) URL.revokeObjectURL(url);
+                    setFile(selectedFile);
+                    setUrl(null);
+                    setProg(0);
+                }
+            };
+
+            const handleDownload = (e) => {
+                e.preventDefault();
+                if (!url) return;
+
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `audio_sin_silencio_${Date.now()}.mp3`;
+                document.body.appendChild(link);
+                link.click();
+                setTimeout(() => {
+                    document.body.removeChild(link);
+                }, 100);
+            };
+
+            const processAudio = async () => {
+                if (!file) return;
+                setIsProc(true);
+                setProg(5);
+                
+                try {
+                    if (!audioCtx.current) {
+                        audioCtx.current = new (window.AudioContext || window.webkitAudioContext)();
+                    }
+                    
+                    const arrayBuffer = await file.arrayBuffer();
+                    setProg(10);
+                    
+                    const buf = await audioCtx.current.decodeAudioData(arrayBuffer);
+                    setProg(20);
+                    
+                    const data = buf.getChannelData(0);
+                    const rate = buf.sampleRate;
+                    
+                    const limit = Math.pow(10, THRESHOLD / 20);
+                    const minSilence = Math.floor(DURATION * rate);
+                    
+                    let output = new Float32Array(data.length);
+                    let outIdx = 0;
+                    
+                    // Procesar en chunks más pequeños para dispositivos de gama baja
+                    const chunkSize = 500000;
+                    
+                    for (let i = 0; i < data.length; ) {
+                        if (Math.abs(data[i]) < limit) {
+                            let s = i;
+                            while (i < data.length && Math.abs(data[i]) < limit) i++;
+                            if ((i - s) >= minSilence) {
+                                const m = Math.floor(0.1 * rate);
+                                for (let j = 0; j < m; j++) output[outIdx++] = 0;
+                            } else {
+                                for (let j = s; j < i; j++) output[outIdx++] = data[j];
+                            }
+                        } else {
+                            output[outIdx++] = data[i]; 
+                            i++;
+                        }
+                        
+                        // Actualizar progreso y liberar el hilo principal
+                        if (i % chunkSize === 0) {
+                            setProg(Math.floor(20 + (i / data.length) * 40));
+                            await new Promise(r => setTimeout(r, 0));
+                        }
+                    }
+                    
+                    setProg(60);
+                    
+                    // Codificación MP3
+                    const enc = new lamejs.Mp3Encoder(1, rate, 128);
+                    const chunks = [];
+                    const encodeChunkSize = 1152;
+                    
+                    for (let i = 0; i < outIdx; i += encodeChunkSize) {
+                        const chunk = output.subarray(i, Math.min(i + encodeChunkSize, outIdx));
+                        const i16 = new Int16Array(chunk.length);
+                        
+                        for (let j = 0; j < chunk.length; j++) {
+                            const v = Math.max(-1, Math.min(1, chunk[j]));
+                            i16[j] = v < 0 ? v * 0x8000 : v * 0x7FFF;
+                        }
+                        
+                        const b = enc.encodeBuffer(i16);
+                        if (b.length > 0) chunks.push(new Uint8Array(b));
+                        
+                        if (i % (encodeChunkSize * 100) === 0) {
+                            setProg(Math.floor(60 + (i / outIdx) * 35));
+                            await new Promise(r => setTimeout(r, 0));
+                        }
+                    }
+                    
+                    chunks.push(new Uint8Array(enc.flush()));
+                    setProg(95);
+                    
+                    const blob = new Blob(chunks, { type: 'audio/mp3' });
+                    setUrl(URL.createObjectURL(blob));
+                    setProg(100);
+                    
+                    showInterstitial();
+                    
+                    // Limpiar memoria
+                    output = null;
+                    
+                } catch (e) { 
+                    console.error('Error procesando audio:', e);
+                    alert("Error al procesar el audio. Intenta con un archivo más pequeño."); 
+                    setProg(0);
+                }
+                
+                setIsProc(false);
+            };
+
+            const resetApp = () => {
+                if (url) URL.revokeObjectURL(url);
+                setUrl(null);
+                setFile(null);
+                setProg(0);
+                if (fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                }
+            };
+
+            return (
+                <div className="min-h-screen flex flex-col items-center p-6 bg-[#090e1a]">
+                    <div className="w-full max-w-md card-pro p-8 rounded-[2.5rem] mt-10 shadow-2xl border-t border-white/10">
+                        <h1 className="text-center text-2xl font-black mb-8 text-purple-400 italic uppercase tracking-tighter">
+                            Truncar Silencio Pro
+                        </h1>
+                        
+                        <div className="border-2 border-dashed border-purple-500/20 rounded-3xl p-8 text-center mb-6 bg-slate-900/50">
+                            <input 
+                                type="file" 
+                                onChange={handleFileChange}
+                                className="hidden" 
+                                id="aud" 
+                                accept="audio/*"
+                                ref={fileInputRef}
+                            />
+                            <label htmlFor="aud" className="cursor-pointer block">
+                                <span className="text-4xl block mb-2">{file ? "✅" : "📁"}</span>
+                                <span className="text-xs text-purple-200 font-bold uppercase truncate block px-4">
+                                    {file ? file.name : "Seleccionar Audio"}
+                                </span>
+                                {file && (
+                                    <span className="text-[10px] text-gray-400 block mt-2">
+                                        {(file.size / 1024 / 1024).toFixed(2)} MB
+                                    </span>
+                                )}
+                            </label>
+                        </div>
+
+                        {isProc && (
+                            <div className="mb-6">
+                                <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
+                                    <div 
+                                        className="bg-purple-500 h-full progress-bar-fill" 
+                                        style={{ width: `${prog}%` }}
+                                    ></div>
+                                </div>
+                                <p className="text-center text-[10px] mt-2 text-purple-300 font-bold">
+                                    {prog}% COMPLETADO
+                                </p>
+                            </div>
+                        )}
+
+                        {!url ? (
+                            <button 
+                                onClick={processAudio} 
+                                disabled={!file || isProc} 
+                                className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-30 disabled:cursor-not-allowed py-5 rounded-3xl font-black text-lg shadow-lg transition-all text-white border-b-4 border-purple-800 active:scale-95"
+                            >
+                                {isProc ? "TRABAJANDO..." : "ELIMINAR SILENCIOS"}
+                            </button>
+                        ) : (
+                            <div className="space-y-4 text-center">
+                                <button 
+                                    onClick={handleDownload} 
+                                    className="w-full bg-emerald-600 hover:bg-emerald-500 py-5 rounded-3xl font-black text-lg block shadow-lg border-b-4 border-emerald-800 text-white uppercase active:scale-95 transition-all"
+                                >
+                                    DESCARGAR MP3 ✅
+                                </button>
+                                <button 
+                                    onClick={resetApp} 
+                                    className="text-[10px] text-gray-500 hover:text-gray-300 uppercase font-bold transition-colors"
+                                >
+                                    Procesar otro
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="mt-12 text-center pb-10">
+                        <p className="text-[10px] text-gray-500 uppercase font-bold tracking-[0.3em] mb-1">
+                            Desarrollado por
+                        </p>
+                        <p className="text-md font-black text-purple-100 tracking-widest uppercase">
+                            YEAN CARLOS GODOY GONZALEZ
+                        </p>
+                        <p className="text-[9px] text-gray-600 font-bold mt-2">
+                            © 2025 TODOS LOS DERECHOS RESERVADOS
+                        </p>
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+
+    <!-- Registro del Service Worker -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('Service Worker registrado exitosamente:', registration.scope);
+                    })
+                    .catch(error => {
+                        console.log('Error al registrar Service Worker:', error);
+                    });
+            });
+        }
+    </script>
+</body>
+</html>
