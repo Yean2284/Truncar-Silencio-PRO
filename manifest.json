@@ -1,46 +1,27 @@
-```json
 {
-  "name": "Truncar Silencio PRO",
-  "short_name": "Truncar Audio",
-  "description": "Elimina silencios de archivos de audio de forma rápida y eficiente",
-  "start_url": "/",
-  "scope": "/",
-  "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#0f172a",
-  "theme_color": "#7c3aed",
-  "lang": "es",
-  "dir": "ltr",
-  "categories": ["productivity", "utilities", "multimedia"],
+  "short_name": "TruncarApp",
+  "name": "Truncar Silencio Pro",
+  "description": "Herramienta profesional para eliminar silencios de audios MP3 localmente.",
   "icons": [
     {
       "src": "icon-192.png",
-      "sizes": "192x192",
       "type": "image/png",
+      "sizes": "192x192",
       "purpose": "any maskable"
     },
     {
       "src": "icon-512.png",
-      "sizes": "512x512",
       "type": "image/png",
+      "sizes": "512x512",
       "purpose": "any maskable"
     }
   ],
-  "screenshots": [],
-  "shortcuts": [
-    {
-      "name": "Procesar Audio",
-      "short_name": "Procesar",
-      "description": "Eliminar silencios de un archivo de audio",
-      "url": "/",
-      "icons": [
-        {
-          "src": "icon-192.png",
-          "sizes": "192x192"
-        }
-      ]
-    }
-  ],
-  "prefer_related_applications": false,
-  "related_applications": []
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#7c3aed",
+  "background_color": "#0f172a",
+  "scope": "/",
+  "id": "truncar-silencio-pro"
 }
+
