@@ -1,5 +1,26 @@
-flask==3.0.0
-flask-cors==4.0.0
-pydub==0.25.1
-gunicorn==21.2.0
-werkzeug==3.0.1
+{
+  "short_name": "TruncarApp",
+  "name": "Truncar Silencio Pro",
+  "description": "Herramienta profesional para eliminar silencios de audios MP3 localmente.",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#7c3aed",
+  "background_color": "#0f172a",
+  "scope": "/",
+  "id": "truncar-silencio-pro"
+}
