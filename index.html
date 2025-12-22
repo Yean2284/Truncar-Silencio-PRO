@@ -2,19 +2,19 @@
 <html lang="es">
 <head>
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>
-<script>
-  window.adsbygoogle = window.adsbygoogle || [];
-</script>
     <script>
-function showInterstitial() {
-  if (window.adsbygoogle) {
-    adsbygoogle.push({
-      google_ad_client: "ca-app-pub-3940256099942544",
-      enable_page_level_ads: true
-    });
-  }
-}
-</script>
+      window.adsbygoogle = window.adsbygoogle || [];
+    </script>
+    <script>
+    function showInterstitial() {
+      if (window.adsbygoogle) {
+        adsbygoogle.push({
+          google_ad_client: "ca-app-pub-3940256099942544",
+          enable_page_level_ads: true
+        });
+      }
+    }
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Truncar Silencio PRO</title>
@@ -51,7 +51,6 @@ function showInterstitial() {
             const THRESHOLD = -30; 
             const DURATION = 0.6;
 
-            // ESTA ES LA FUNCIÓN QUE DEBE IR AQUÍ (No en sw.js)
             const handleDownload = (e) => {
                 e.preventDefault();
                 if (!url) return;
@@ -69,18 +68,36 @@ function showInterstitial() {
             const processAudio = async () => {
                 if (!file) return;
                 setIsProc(true);
-                setProg(5);
+                setProg(2);
+                
+                // Limpieza de memoria previa
+                if (url) URL.revokeObjectURL(url);
+                setUrl(null);
+
                 try {
-                    if (!audioCtx.current) audioCtx.current = new (window.AudioContext || window.webkitAudioContext)();
-                    const buf = await audioCtx.current.decodeAudioData(await file.arrayBuffer());
-                    const data = buf.getChannelData(0);
-                    const rate = buf.sampleRate;
+                    // 1. Configurar AudioContext robusto
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    if (!audioCtx.current) audioCtx.current = new AudioContext();
+                    
+                    // Resume necesario para móviles modernos
+                    if (audioCtx.current.state === 'suspended') {
+                        await audioCtx.current.resume();
+                    }
+
+                    // 2. Decodificación
+                    const arrayBuffer = await file.arrayBuffer();
+                    const buf = await audioCtx.current.decodeAudioData(arrayBuffer);
+                    const data = buf.getChannelData(0); // Mono
+                    const rate = buf.sampleRate; // DETECTA 48kHz o 44.1kHz automáticamente
                     
                     const limit = Math.pow(10, THRESHOLD / 20);
                     const minSilence = Math.floor(DURATION * rate);
                     
                     let output = new Float32Array(data.length);
                     let outIdx = 0;
+                    
+                    // 3. Procesamiento de silencios con pausas para evitar congelamiento
+                    const processBatch = 200000;
                     
                     for (let i = 0; i < data.length; ) {
                         if (Math.abs(data[i]) < limit) {
@@ -95,13 +112,25 @@ function showInterstitial() {
                         } else {
                             output[outIdx++] = data[i]; i++;
                         }
-                        if (i % 1000000 === 0) await new Promise(r => setTimeout(r, 0));
+                        
+                        // Pausa para que el navegador respire
+                        if (i % processBatch === 0) {
+                            setProg(5 + Math.floor((i / data.length) * 45)); // 5% a 50%
+                            await new Promise(r => setTimeout(r, 0));
+                        }
                     }
                     
+                    // Liberar memoria del array original grande
+                    const trimmedOutput = output.subarray(0, outIdx);
+                    output = null; // Garbage collection hint
+
+                    // 4. Codificación MP3 Correcta
                     const enc = new lamejs.Mp3Encoder(1, rate, 128);
                     const chunks = [];
-                    for (let i = 0; i < outIdx; i += 1152) {
-                        const chunk = output.subarray(i, i + 1152);
+                    const sampleBlock = 1152;
+
+                    for (let i = 0; i < trimmedOutput.length; i += sampleBlock) {
+                        const chunk = trimmedOutput.subarray(i, i + sampleBlock);
                         const i16 = new Int16Array(chunk.length);
                         for (let j = 0; j < chunk.length; j++) {
                             const v = Math.max(-1, Math.min(1, chunk[j]));
@@ -109,18 +138,22 @@ function showInterstitial() {
                         }
                         const b = enc.encodeBuffer(i16);
                         if (b.length > 0) chunks.push(new Uint8Array(b));
-                        if (i % 400000 === 0) {
-                            setProg(Math.floor(40 + (i / outIdx) * 55));
+                        
+                        // Actualizar UI
+                        if (i % (sampleBlock * 200) === 0) {
+                            setProg(50 + Math.floor((i / trimmedOutput.length) * 50));
                             await new Promise(r => setTimeout(r, 0)); 
                         }
                     }
+                    
                     chunks.push(new Uint8Array(enc.flush()));
                     setUrl(URL.createObjectURL(new Blob(chunks, { type: 'audio/mp3' })));
                     setProg(100);
-                    // cuando el procesamiento termina
-showInterstitial();
+                    showInterstitial();
+
                 } catch (e) { 
-                    alert("Error al procesar."); 
+                    console.error(e);
+                    alert("Error: El archivo puede ser incompatible o demasiado grande para la memoria del dispositivo."); 
                 }
                 setIsProc(false);
             };
@@ -158,7 +191,7 @@ showInterstitial();
                                 <button onClick={handleDownload} className="w-full bg-emerald-600 hover:bg-emerald-500 py-5 rounded-3xl font-black text-lg block shadow-lg border-b-4 border-emerald-800 text-white uppercase">
                                     DESCARGAR MP3 ✅
                                 </button>
-                                <button onClick={() => {setUrl(null); setProg(0);}} className="text-[10px] text-gray-500 uppercase font-bold">Procesar otro</button>
+                                <button onClick={() => {setUrl(null); setProg(0); setFile(null);}} className="text-[10px] text-gray-500 uppercase font-bold">Procesar otro</button>
                             </div>
                         )}
                     </div>
