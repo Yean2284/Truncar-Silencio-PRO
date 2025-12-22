@@ -41,7 +41,7 @@
     <div id="root"></div>
 
 <script type="text/babel">
-        const { useState, useRef, useEffect } = React;
+        const { useState, useRef } = React;
 
         function App() {
             const [file, setFile] = useState(null);
@@ -64,20 +64,14 @@
                 setTimeout(() => document.body.removeChild(link), 100);
             };
 
-            // Función auxiliar para convertir Float32 a Int16 (necesario para MP3)
-            // sin crear arrays gigantes
-            const convertToInt16 = (float32Array) => {
-                const l = float32Array.length;
-                const i16 = new Int16Array(l);
-                for(let i=0; i<l; i++) {
-                    const v = Math.max(-1, Math.min(1, float32Array[i]));
-                    i16[i] = v < 0 ? v * 0x8000 : v * 0x7FFF;
-                }
-                return i16;
-            };
-
             const processAudio = async () => {
                 if (!file) return;
+                
+                // Seguridad para archivos gigantes
+                if (file.size > 50 * 1024 * 1024) {
+                     alert("El archivo es muy grande (>50MB). Podría fallar en el navegador.");
+                }
+
                 setIsProc(true);
                 setProg(1);
                 
@@ -92,68 +86,77 @@
 
                     setProg(5);
 
-                    // 2. Decodificar (Esto es lo único que gasta RAM ahora)
+                    // 2. Decodificar
+                    // decodeAudioData es el paso más pesado. Si falla aquí, el archivo es demasiado grande para la RAM del teléfono.
                     const arrayBuffer = await file.arrayBuffer();
                     const buf = await audioCtx.current.decodeAudioData(arrayBuffer);
                     const data = buf.getChannelData(0); 
                     const rate = buf.sampleRate;
                     
+                    // Liberar buffer original inmediatamente
+                    // (En JS no podemos forzarlo, pero ayuda no tener referencias extra)
+                    
                     const limit = Math.pow(10, THRESHOLD / 20);
                     const minSilence = Math.floor(DURATION * rate);
                     
-                    // 3. Preparar Encoder MP3
+                    // 3. Preparar Encoder MP3 y Buffers FIJOS
+                    // IMPORTANTE: No usamos arrays dinámicos (.push)
                     const mp3enc = new lamejs.Mp3Encoder(1, rate, 128);
                     const chunks = [];
                     
-                    // Buffer temporal pequeño para codificar
-                    // NO creamos un array "output" gigante, codificamos al vuelo.
+                    const BLOCK_SIZE = 1152;
+                    const floatBuffer = new Float32Array(BLOCK_SIZE);
+                    let bufferIndex = 0;
                     
-                    let currentChunk = [];
-                    const CHUNK_SIZE = 1152; // Tamaño de bloque mp3 estándar
-                    
+                    // Función interna para procesar el bloque cuando se llena
+                    const encodeBlock = () => {
+                        const i16 = new Int16Array(BLOCK_SIZE);
+                        for(let j=0; j<BLOCK_SIZE; j++) {
+                            const v = Math.max(-1, Math.min(1, floatBuffer[j]));
+                            i16[j] = v < 0 ? v * 0x8000 : v * 0x7FFF;
+                        }
+                        const encoded = mp3enc.encodeBuffer(i16);
+                        if (encoded.length > 0) chunks.push(encoded);
+                        bufferIndex = 0; // Resetear índice
+                    };
+
                     let i = 0;
                     let lastUpdate = Date.now();
                     const totalLen = data.length;
 
-                    // Bucle principal optimizado
+                    // --- BUCLE PRINCIPAL ---
                     while (i < totalLen) {
                         
-                        // Lógica de detección de silencio
+                        // Detectar silencio
                         if (Math.abs(data[i]) < limit) {
                             let s = i;
-                            // Buscar fin del silencio
                             while (i < totalLen && Math.abs(data[i]) < limit) i++;
                             
                             const silenceLen = i - s;
                             
                             if (silenceLen >= minSilence) {
-                                // Es silencio largo: IGNORAR (Truncar), insertar solo una pizca
-                                // para suavizar (0.05s)
+                                // Silencio largo encontrado: Insertar solo un pequeño puente (0.05s)
                                 const bridge = Math.floor(0.05 * rate);
-                                for (let k = 0; k < bridge; k++) currentChunk.push(0);
+                                for (let k = 0; k < bridge; k++) {
+                                    floatBuffer[bufferIndex++] = 0;
+                                    if (bufferIndex === BLOCK_SIZE) encodeBlock();
+                                }
                             } else {
-                                // Es silencio corto: MANTENER
-                                for (let k = s; k < i; k++) currentChunk.push(data[k]);
+                                // Silencio corto: Copiar tal cual
+                                for (let k = s; k < i; k++) {
+                                    floatBuffer[bufferIndex++] = data[k];
+                                    if (bufferIndex === BLOCK_SIZE) encodeBlock();
+                                }
                             }
                         } else {
-                            // Es sonido: MANTENER
-                            currentChunk.push(data[i]);
+                            // Sonido normal: Copiar
+                            floatBuffer[bufferIndex++] = data[i];
+                            if (bufferIndex === BLOCK_SIZE) encodeBlock();
                             i++;
                         }
 
-                        // Si el buffer temporal está lleno, codificar a MP3 y limpiar RAM
-                        while (currentChunk.length >= CHUNK_SIZE) {
-                            const subarray = new Float32Array(currentChunk.slice(0, CHUNK_SIZE));
-                            currentChunk = currentChunk.slice(CHUNK_SIZE); // Mantener el resto
-                            
-                            const i16 = convertToInt16(subarray);
-                            const mp3buf = mp3enc.encodeBuffer(i16);
-                            if (mp3buf.length > 0) chunks.push(mp3buf);
-                        }
-
-                        // Actualizar UI y liberar hilo principal cada 500ms
-                        // (Evita el "Oh No" por timeout)
-                        if (Date.now() - lastUpdate > 500) {
+                        // Liberar UI cada 200ms
+                        if (Date.now() - lastUpdate > 200) {
                             const p = Math.floor((i / totalLen) * 95);
                             setProg(p);
                             await new Promise(r => setTimeout(r, 0));
@@ -161,19 +164,22 @@
                         }
                     }
 
-                    // Procesar lo que quede en el buffer
-                    if (currentChunk.length > 0) {
-                         const subarray = new Float32Array(currentChunk);
-                         const i16 = convertToInt16(subarray);
-                         const mp3buf = mp3enc.encodeBuffer(i16);
-                         if (mp3buf.length > 0) chunks.push(mp3buf);
+                    // Procesar lo que sobró en el buffer
+                    if (bufferIndex > 0) {
+                         const i16 = new Int16Array(bufferIndex);
+                         for(let j=0; j<bufferIndex; j++) {
+                             const v = Math.max(-1, Math.min(1, floatBuffer[j]));
+                             i16[j] = v < 0 ? v * 0x8000 : v * 0x7FFF;
+                         }
+                         const encoded = mp3enc.encodeBuffer(i16);
+                         if (encoded.length > 0) chunks.push(encoded);
                     }
 
-                    // Finalizar MP3
+                    // Flush final
                     const mp3last = mp3enc.flush();
                     if (mp3last.length > 0) chunks.push(mp3last);
 
-                    // Crear Blob
+                    // Crear MP3 final
                     const blob = new Blob(chunks, { type: 'audio/mp3' });
                     setUrl(URL.createObjectURL(blob));
                     setProg(100);
@@ -182,7 +188,7 @@
 
                 } catch (e) { 
                     console.error(e);
-                    alert("Error: Memoria insuficiente. Intenta con un audio más corto o de menor calidad."); 
+                    alert("Error crítico: Memoria insuficiente. Cierra otras apps o prueba un audio más corto."); 
                 }
                 setIsProc(false);
             };
