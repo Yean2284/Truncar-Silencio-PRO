@@ -19,7 +19,7 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Truncar Silencio PRO</title>
+    <title>Truncar Silencio ULTRA</title>
     <meta name="google-adsense-account" content="ca-app-pub-3940256099942544">
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-app-pub-3940256099942544" crossorigin="anonymous"></script>
     <link rel="manifest" href="manifest.json">
@@ -66,10 +66,10 @@
 
             const processAudio = async () => {
                 if (!file) return;
-                
-                // Seguridad para archivos gigantes
-                if (file.size > 50 * 1024 * 1024) {
-                     alert("El archivo es muy grande (>50MB). Podría fallar en el navegador.");
+
+                // ADVERTENCIA VISUAL (Ya no bloquea, solo avisa)
+                if (file.size > 150 * 1024 * 1024) {
+                     if(!confirm("El archivo es gigante (>150MB). El navegador podría cerrarse si se queda sin RAM. ¿Continuar bajo tu riesgo?")) return;
                 }
 
                 setIsProc(true);
@@ -79,28 +79,35 @@
                 setUrl(null);
 
                 try {
-                    // 1. Setup AudioContext
+                    // 1. Forzar Sample Rate a 44100 para AHORRAR MEMORIA en móviles de gama alta
                     const AudioContext = window.AudioContext || window.webkitAudioContext;
-                    if (!audioCtx.current) audioCtx.current = new AudioContext();
+                    // El truco: forzamos 44.1kHz. Si el móvil es de 48k o 96k, esto reduce el uso de RAM a la mitad.
+                    if (!audioCtx.current) audioCtx.current = new AudioContext({ sampleRate: 44100 });
+                    
                     if (audioCtx.current.state === 'suspended') await audioCtx.current.resume();
 
                     setProg(5);
 
-                    // 2. Decodificar
-                    // decodeAudioData es el paso más pesado. Si falla aquí, el archivo es demasiado grande para la RAM del teléfono.
-                    const arrayBuffer = await file.arrayBuffer();
-                    const buf = await audioCtx.current.decodeAudioData(arrayBuffer);
-                    const data = buf.getChannelData(0); 
-                    const rate = buf.sampleRate;
+                    // 2. Cargar y Decodificar
+                    // Usamos variables temporales para poder anularlas manualmente
+                    let arrayBuffer = await file.arrayBuffer();
                     
-                    // Liberar buffer original inmediatamente
-                    // (En JS no podemos forzarlo, pero ayuda no tener referencias extra)
+                    // Decodificación (Paso crítico de RAM)
+                    let audioBuffer = await audioCtx.current.decodeAudioData(arrayBuffer);
                     
+                    // LIBERAR MEMORIA INMEDIATAMENTE
+                    arrayBuffer = null; // Adiós al archivo original en RAM
+                    
+                    let data = audioBuffer.getChannelData(0); // Referencia a datos crudos
+                    const rate = audioBuffer.sampleRate; // Debería ser 44100 gracias al constructor
+                    
+                    // Liberar el objeto AudioBuffer contenedor, quedándonos solo con los datos raw
+                    audioBuffer = null; 
+
                     const limit = Math.pow(10, THRESHOLD / 20);
                     const minSilence = Math.floor(DURATION * rate);
                     
-                    // 3. Preparar Encoder MP3 y Buffers FIJOS
-                    // IMPORTANTE: No usamos arrays dinámicos (.push)
+                    // 3. Encoder MP3 y Buffers Estáticos
                     const mp3enc = new lamejs.Mp3Encoder(1, rate, 128);
                     const chunks = [];
                     
@@ -108,78 +115,87 @@
                     const floatBuffer = new Float32Array(BLOCK_SIZE);
                     let bufferIndex = 0;
                     
-                    // Función interna para procesar el bloque cuando se llena
                     const encodeBlock = () => {
                         const i16 = new Int16Array(BLOCK_SIZE);
                         for(let j=0; j<BLOCK_SIZE; j++) {
-                            const v = Math.max(-1, Math.min(1, floatBuffer[j]));
+                            // Clamp manual optimizado
+                            let v = floatBuffer[j];
+                            if (v > 1) v = 1; else if (v < -1) v = -1;
                             i16[j] = v < 0 ? v * 0x8000 : v * 0x7FFF;
                         }
                         const encoded = mp3enc.encodeBuffer(i16);
                         if (encoded.length > 0) chunks.push(encoded);
-                        bufferIndex = 0; // Resetear índice
+                        bufferIndex = 0;
                     };
 
                     let i = 0;
                     let lastUpdate = Date.now();
                     const totalLen = data.length;
+                    
+                    // Optimización: Extraer longitud a variable local para velocidad
+                    const dLen = data.length;
 
-                    // --- BUCLE PRINCIPAL ---
-                    while (i < totalLen) {
+                    // --- BUCLE DE PROCESAMIENTO ---
+                    while (i < dLen) {
                         
-                        // Detectar silencio
+                        // Si el valor absoluto es menor al límite (Silencio)
                         if (Math.abs(data[i]) < limit) {
                             let s = i;
-                            while (i < totalLen && Math.abs(data[i]) < limit) i++;
+                            // Avanzar índice mientras haya silencio
+                            while (i < dLen && Math.abs(data[i]) < limit) i++;
                             
                             const silenceLen = i - s;
                             
                             if (silenceLen >= minSilence) {
-                                // Silencio largo encontrado: Insertar solo un pequeño puente (0.05s)
+                                // ES UN SILENCIO LARGO: Insertar micro-puente (0.05s) para suavidad
                                 const bridge = Math.floor(0.05 * rate);
                                 for (let k = 0; k < bridge; k++) {
                                     floatBuffer[bufferIndex++] = 0;
                                     if (bufferIndex === BLOCK_SIZE) encodeBlock();
                                 }
                             } else {
-                                // Silencio corto: Copiar tal cual
+                                // ES UN SILENCIO CORTO: Copiarlo (no se borra)
                                 for (let k = s; k < i; k++) {
                                     floatBuffer[bufferIndex++] = data[k];
                                     if (bufferIndex === BLOCK_SIZE) encodeBlock();
                                 }
                             }
                         } else {
-                            // Sonido normal: Copiar
+                            // ES SONIDO: Copiar
                             floatBuffer[bufferIndex++] = data[i];
                             if (bufferIndex === BLOCK_SIZE) encodeBlock();
                             i++;
                         }
 
-                        // Liberar UI cada 200ms
-                        if (Date.now() - lastUpdate > 200) {
-                            const p = Math.floor((i / totalLen) * 95);
+                        // Liberar hilo principal cada ~250ms para evitar congelamiento
+                        if (Date.now() - lastUpdate > 250) {
+                            const p = Math.floor((i / dLen) * 98);
                             setProg(p);
+                            // SetTimeout 0 permite al navegador refrescar la pantalla y manejar eventos
                             await new Promise(r => setTimeout(r, 0));
                             lastUpdate = Date.now();
                         }
                     }
 
-                    // Procesar lo que sobró en el buffer
+                    // Limpiar array de entrada gigante antes de finalizar
+                    data = null; 
+
+                    // Procesar remanente
                     if (bufferIndex > 0) {
                          const i16 = new Int16Array(bufferIndex);
                          for(let j=0; j<bufferIndex; j++) {
-                             const v = Math.max(-1, Math.min(1, floatBuffer[j]));
+                             let v = floatBuffer[j];
+                             if (v > 1) v = 1; else if (v < -1) v = -1;
                              i16[j] = v < 0 ? v * 0x8000 : v * 0x7FFF;
                          }
                          const encoded = mp3enc.encodeBuffer(i16);
                          if (encoded.length > 0) chunks.push(encoded);
                     }
 
-                    // Flush final
                     const mp3last = mp3enc.flush();
                     if (mp3last.length > 0) chunks.push(mp3last);
 
-                    // Crear MP3 final
+                    // Crear Blob final
                     const blob = new Blob(chunks, { type: 'audio/mp3' });
                     setUrl(URL.createObjectURL(blob));
                     setProg(100);
@@ -188,7 +204,8 @@
 
                 } catch (e) { 
                     console.error(e);
-                    alert("Error crítico: Memoria insuficiente. Cierra otras apps o prueba un audio más corto."); 
+                    // Si falla aquí, es físico (RAM del dispositivo llena)
+                    alert("Error: Memoria insuficiente. El archivo es demasiado grande para la RAM disponible en este momento."); 
                 }
                 setIsProc(false);
             };
@@ -196,14 +213,14 @@
             return (
                 <div className="min-h-screen flex flex-col items-center p-6 bg-[#090e1a]">
                     <div className="w-full max-w-md card-pro p-8 rounded-[2.5rem] mt-10 shadow-2xl border-t border-white/10">
-                        <h1 className="text-center text-2xl font-black mb-8 text-purple-400 italic uppercase tracking-tighter">Truncar Silencio Pro</h1>
+                        <h1 className="text-center text-2xl font-black mb-8 text-purple-400 italic uppercase tracking-tighter">Truncar Silencio PRO</h1>
                         
                         <div className="border-2 border-dashed border-purple-500/20 rounded-3xl p-8 text-center mb-6 bg-slate-900/50">
                             <input type="file" onChange={e => {setFile(e.target.files[0]); setUrl(null);}} className="hidden" id="aud" accept="audio/*" />
                             <label htmlFor="aud" className="cursor-pointer block">
                                 <span className="text-4xl block mb-2">{file ? "✅" : "📁"}</span>
                                 <span className="text-xs text-purple-200 font-bold uppercase truncate block">
-                                    {file ? file.name : "Seleccionar Audio"}
+                                    {file ? file.name : "Seleccionar Audio (+150MB Support)"}
                                 </span>
                             </label>
                         </div>
@@ -214,12 +231,13 @@
                                     <div className="bg-purple-500 h-full progress-bar-fill" style={{ width: `${prog}%` }}></div>
                                 </div>
                                 <p className="text-center text-[10px] mt-2 text-purple-300 font-bold">{prog}% COMPLETADO</p>
+                                <p className="text-center text-[8px] text-gray-500">No cierres esta pestaña</p>
                             </div>
                         )}
 
                         {!url ? (
                             <button onClick={processAudio} disabled={!file || isProc} className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-30 py-5 rounded-3xl font-black text-lg shadow-lg transition-all text-white border-b-4 border-purple-800">
-                                {isProc ? "TRABAJANDO..." : "ELIMINAR SILENCIOS"}
+                                {isProc ? "PROCESANDO..." : "ELIMINAR SILENCIOS"}
                             </button>
                         ) : (
                             <div className="space-y-4 text-center">
