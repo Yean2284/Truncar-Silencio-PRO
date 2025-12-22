@@ -2,19 +2,19 @@
 <html lang="es">
 <head>
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>
+<script>
+  window.adsbygoogle = window.adsbygoogle || [];
+</script>
     <script>
-        window.adsbygoogle = window.adsbygoogle || [];
-    </script>
-    <script>
-        function showInterstitial() {
-            if (window.adsbygoogle) {
-                adsbygoogle.push({
-                    google_ad_client: "ca-app-pub-3940256099942544",
-                    enable_page_level_ads: true
-                });
-            }
-        }
-    </script>
+function showInterstitial() {
+  if (window.adsbygoogle) {
+    adsbygoogle.push({
+      google_ad_client: "ca-app-pub-3940256099942544",
+      enable_page_level_ads: true
+    });
+  }
+}
+</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Truncar Silencio PRO</title>
@@ -22,8 +22,6 @@
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-app-pub-3940256099942544" crossorigin="anonymous"></script>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#7c3aed">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.all.min.js"></script>
@@ -32,47 +30,15 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     
     <style>
-        * { 
-            -webkit-tap-highlight-color: transparent;
-            box-sizing: border-box;
-        }
-        body { 
-            background: #0f172a; 
-            color: white; 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            touch-action: manipulation;
-            overscroll-behavior: contain;
-            margin: 0;
-            padding: 0;
-        }
-        .card-pro { 
-            background: rgba(30, 41, 59, 0.85); 
-            border: 1px solid rgba(168, 85, 247, 0.3); 
-            backdrop-filter: blur(15px);
-            will-change: transform;
-        }
-        .progress-bar-fill { 
-            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-            will-change: width;
-        }
-        button {
-            touch-action: manipulation;
-            -webkit-user-select: none;
-            user-select: none;
-            cursor: pointer;
-        }
-        input[type="file"] {
-            display: none;
-        }
-        label {
-            cursor: pointer;
-        }
+        body { background: #0f172a; color: white; font-family: sans-serif; -webkit-tap-highlight-color: transparent; }
+        .card-pro { background: rgba(30, 41, 59, 0.85); border: 1px solid rgba(168, 85, 247, 0.3); backdrop-filter: blur(15px); }
+        .progress-bar-fill { transition: width 0.3s ease-in-out; }
     </style>
 </head>
 <body>
     <div id="root"></div>
 
-    <script type="text/babel">
+<script type="text/babel">
         const { useState, useRef, useEffect } = React;
 
         function App() {
@@ -81,280 +47,18 @@
             const [prog, setProg] = useState(0);
             const [url, setUrl] = useState(null);
             const audioCtx = useRef(null);
-            const fileInputRef = useRef(null);
 
             const THRESHOLD = -30; 
             const DURATION = 0.6;
 
-            useEffect(() => {
-                // Limpiar URLs cuando el componente se desmonte
-                return () => {
-                    if (url) URL.revokeObjectURL(url);
-                };
-            }, [url]);
-
-            const handleFileChange = (e) => {
-                const selectedFile = e.target.files[0];
-                if (selectedFile) {
-                    // Validar tamaño máximo (200MB para S23+)
-                    const maxSize = 200 * 1024 * 1024;
-                    const warningSize = 80 * 1024 * 1024;
-                    
-                    if (selectedFile.size > maxSize) {
-                        alert('⚠️ Archivo demasiado grande. Máximo 200MB.\n\nPara archivos más grandes, considera dividirlos primero.');
-                        if (fileInputRef.current) fileInputRef.current.value = '';
-                        return;
-                    }
-                    
-                    if (selectedFile.size > warningSize) {
-                        const minutes = Math.ceil((selectedFile.size / 1024 / 1024) / 10);
-                        const proceed = confirm(`⚠️ Archivo grande: ${(selectedFile.size / 1024 / 1024).toFixed(1)}MB\n\nEl procesamiento puede tardar ${minutes}-${minutes + 2} minutos.\n\n¿Deseas continuar?`);
-                        if (!proceed) {
-                            if (fileInputRef.current) fileInputRef.current.value = '';
-                            return;
-                        }
-                    }
-                    
-                    if (url) URL.revokeObjectURL(url);
-                    setFile(selectedFile);
-                    setUrl(null);
-                    setProg(0);
-                }
-            };
-
+            // ESTA ES LA FUNCIÓN QUE DEBE IR AQUÍ (No en sw.js)
             const handleDownload = (e) => {
                 e.preventDefault();
                 if (!url) return;
 
                 const link = document.createElement('a');
                 link.href = url;
-                link.download = `audio_sin_silencio_${Date.now()}.mp3`;
-                document.body.appendChild(link);
-                link.click();
-                setTimeout(() => {
-                    document.body.removeChild(link);
-                }, 100);
-            };
-
-            const processAudio = async () => {
-    if (!file) return;
-    setIsProc(true);
-    setProg(5);
-    
-    try {
-        // URL de la API (Railway usa la misma URL que el frontend)
-        const API_URL = window.location.origin + '/api/process';
-        
-        console.log('📤 Enviando archivo al servidor...', file.name);
-        
-        // Crear FormData con el archivo
-        const formData = new FormData();
-        formData.append('audio', file);
-        
-        setProg(15);
-        
-        // Enviar al servidor con timeout extendido
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutos timeout
-        
-        const response = await fetch(API_URL, {
-            method: 'POST',
-            body: formData,
-            signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        setProg(40);
-        
-        if (!response.ok) {
-            let errorData;
-            try {
-                errorData = await response.json();
-            } catch {
-                errorData = { error: 'Error del servidor', details: `Status ${response.status}` };
-            }
-            throw new Error(errorData.details || errorData.error || 'Error en el servidor');
-        }
-        
-        console.log('📥 Recibiendo audio procesado...');
-        setProg(70);
-        
-        // Recibir archivo procesado
-        const blob = await response.blob();
-        setProg(95);
-        
-        const finalSize = (blob.size / 1024 / 1024).toFixed(2);
-        const originalSize = (file.size / 1024 / 1024).toFixed(2);
-        const savings = ((file.size - blob.size) / file.size * 100).toFixed(1);
-        
-        console.log(`✅ Procesamiento completo:`);
-        console.log(`   Tamaño original: ${originalSize}MB`);
-        console.log(`   Tamaño final: ${finalSize}MB`);
-        console.log(`   Ahorro: ${savings}%`);
-        
-        setUrl(URL.createObjectURL(blob));
-        setProg(100);
-        
-        showInterstitial();
-        
-    } catch (e) { 
-        console.error('❌ Error procesando audio:', e);
-        
-        let errorMsg = '⚠️ Error al procesar el audio.';
-        
-        if (e.name === 'AbortError') {
-            errorMsg = '⚠️ Tiempo de espera agotado.\n\nEl archivo es muy grande o la conexión es lenta.\nIntenta con un archivo más pequeño.';
-        } else if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
-            errorMsg = '⚠️ Error de conexión.\n\nVerifica tu internet e intenta de nuevo.';
-        } else if (e.message.includes('grande')) {
-            errorMsg = '⚠️ Archivo demasiado grande.\n\nMáximo permitido: 200MB';
-        } else if (e.message.includes('silencio')) {
-            errorMsg = '⚠️ El archivo solo contiene silencio.\n\nIntenta con otro archivo.';
-        } else if (e.message.includes('Formato no soportado')) {
-            errorMsg = '⚠️ Formato no soportado.\n\nFormatos válidos: MP3, WAV, M4A, OGG, FLAC';
-        } else {
-            errorMsg = `⚠️ Error: ${e.message}\n\nIntenta de nuevo o con otro archivo.`;
-        }
-        
-        alert(errorMsg); 
-        setProg(0);
-    }
-    
-    setIsProc(false);
-};
-
-            const resetApp = () => {
-                if (url) URL.revokeObjectURL(url);
-                setUrl(null);
-                setFile(null);
-                setProg(0);
-                if (fileInputRef.current) {
-                    fileInputRef.current.value = '';
-                }
-            };
-
-            return (
-                <div className="min-h-screen flex flex-col items-center p-6 bg-[#090e1a]">
-                    <div className="w-full max-w-md card-pro p-8 rounded-[2.5rem] mt-10 shadow-2xl border-t border-white/10">
-                        <h1 className="text-center text-2xl font-black mb-8 text-purple-400 italic uppercase tracking-tighter">
-                            Truncar Silencio Pro
-                        </h1>
-                        
-                        <div className="border-2 border-dashed border-purple-500/20 rounded-3xl p-8 text-center mb-6 bg-slate-900/50">
-                            <input 
-                                type="file" 
-                                onChange={handleFileChange}
-                                className="hidden" 
-                                id="aud" 
-                                accept="audio/*"
-                                ref={fileInputRef}
-                            />
-                            <label htmlFor="aud" className="cursor-pointer block">
-                                <span className="text-4xl block mb-2">{file ? "✅" : "📁"}</span>
-                                <span className="text-xs text-purple-200 font-bold uppercase block px-4 break-words">
-                                    {file ? file.name : "Seleccionar Audio"}
-                                </span>
-                                {file && (
-                                    <div className="mt-3 space-y-1">
-                                        <span className="text-[10px] text-emerald-400 font-bold block">
-                                            📦 {(file.size / 1024 / 1024).toFixed(2)} MB
-                                        </span>
-                                        <span className="text-[9px] text-gray-400 block">
-                                            {file.type || 'audio/mpeg'}
-                                        </span>
-                                    </div>
-                                )}
-                            </label>
-                        </div>
-
-                        {isProc && (
-                            <div className="mb-6">
-                                <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden shadow-inner">
-                                    <div 
-                                        className="bg-gradient-to-r from-purple-500 to-pink-500 h-full progress-bar-fill shadow-lg" 
-                                        style={{ width: `${prog}%` }}
-                                    ></div>
-                                </div>
-                                <p className="text-center text-xs mt-3 text-purple-300 font-bold tracking-wide">
-                                    {prog < 20 && "🔄 CARGANDO AUDIO..."}
-                                    {prog >= 20 && prog < 60 && "✂️ ELIMINANDO SILENCIOS..."}
-                                    {prog >= 60 && prog < 95 && "🎵 CODIFICANDO MP3..."}
-                                    {prog >= 95 && "✅ FINALIZANDO..."}
-                                </p>
-                                <p className="text-center text-[10px] mt-1 text-gray-400">
-                                    {prog}% COMPLETADO
-                                </p>
-                            </div>
-                        )}
-
-                        {!url ? (
-                            <button 
-                                onClick={processAudio} 
-                                disabled={!file || isProc} 
-                                className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-30 disabled:cursor-not-allowed py-5 rounded-3xl font-black text-lg shadow-lg transition-all text-white border-b-4 border-purple-800 active:scale-95"
-                            >
-                                {isProc ? "TRABAJANDO..." : "ELIMINAR SILENCIOS"}
-                            </button>
-                        ) : (
-                            <div className="space-y-4 text-center">
-                                <button 
-                                    onClick={handleDownload} 
-                                    className="w-full bg-emerald-600 hover:bg-emerald-500 py-5 rounded-3xl font-black text-lg block shadow-lg border-b-4 border-emerald-800 text-white uppercase active:scale-95 transition-all"
-                                >
-                                    DESCARGAR MP3 ✅
-                                </button>
-                                <button 
-                                    onClick={resetApp} 
-                                    className="text-[10px] text-gray-500 hover:text-gray-300 uppercase font-bold transition-colors"
-                                >
-                                    Procesar otro
-                                </button>
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="mt-12 text-center pb-10">
-                        <p className="text-[10px] text-gray-500 uppercase font-bold tracking-[0.3em] mb-1">
-                            Desarrollado por
-                        </p>
-                        <p className="text-md font-black text-purple-100 tracking-widest uppercase">
-                            YEAN CARLOS GODOY GONZALEZ
-                        </p>
-                        <p className="text-[9px] text-gray-600 font-bold mt-2">
-                            © 2025 TODOS LOS DERECHOS RESERVADOS
-                        </p>
-                    </div>
-                </div>
-            );
-        }
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-
-    <!-- Registro del Service Worker -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(registration => {
-                        console.log('Service Worker registrado exitosamente:', registration.scope);
-                    })
-                    .catch(error => {
-                        console.log('Error al registrar Service Worker:', error);
-                    });
-            });
-        }
-    </script>
-</body>
-</html>
-            const handleDownload = (e) => {
-                e.preventDefault();
-                if (!url) return;
-
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `audio_sin_silencio_${Date.now()}.mp3`;
+                link.download = 'audio_sin_silencio.mp3';
                 document.body.appendChild(link);
                 link.click();
                 setTimeout(() => {
@@ -366,18 +70,9 @@
                 if (!file) return;
                 setIsProc(true);
                 setProg(5);
-                
                 try {
-                    if (!audioCtx.current) {
-                        audioCtx.current = new (window.AudioContext || window.webkitAudioContext)();
-                    }
-                    
-                    const arrayBuffer = await file.arrayBuffer();
-                    setProg(10);
-                    
-                    const buf = await audioCtx.current.decodeAudioData(arrayBuffer);
-                    setProg(20);
-                    
+                    if (!audioCtx.current) audioCtx.current = new (window.AudioContext || window.webkitAudioContext)();
+                    const buf = await audioCtx.current.decodeAudioData(await file.arrayBuffer());
                     const data = buf.getChannelData(0);
                     const rate = buf.sampleRate;
                     
@@ -386,9 +81,6 @@
                     
                     let output = new Float32Array(data.length);
                     let outIdx = 0;
-                    
-                    // Procesar en chunks más pequeños para dispositivos de gama baja
-                    const chunkSize = 500000;
                     
                     for (let i = 0; i < data.length; ) {
                         if (Math.abs(data[i]) < limit) {
@@ -401,152 +93,80 @@
                                 for (let j = s; j < i; j++) output[outIdx++] = data[j];
                             }
                         } else {
-                            output[outIdx++] = data[i]; 
-                            i++;
+                            output[outIdx++] = data[i]; i++;
                         }
-                        
-                        // Actualizar progreso y liberar el hilo principal
-                        if (i % chunkSize === 0) {
-                            setProg(Math.floor(20 + (i / data.length) * 40));
-                            await new Promise(r => setTimeout(r, 0));
-                        }
+                        if (i % 1000000 === 0) await new Promise(r => setTimeout(r, 0));
                     }
                     
-                    setProg(60);
-                    
-                    // Codificación MP3
                     const enc = new lamejs.Mp3Encoder(1, rate, 128);
                     const chunks = [];
-                    const encodeChunkSize = 1152;
-                    
-                    for (let i = 0; i < outIdx; i += encodeChunkSize) {
-                        const chunk = output.subarray(i, Math.min(i + encodeChunkSize, outIdx));
+                    for (let i = 0; i < outIdx; i += 1152) {
+                        const chunk = output.subarray(i, i + 1152);
                         const i16 = new Int16Array(chunk.length);
-                        
                         for (let j = 0; j < chunk.length; j++) {
                             const v = Math.max(-1, Math.min(1, chunk[j]));
                             i16[j] = v < 0 ? v * 0x8000 : v * 0x7FFF;
                         }
-                        
                         const b = enc.encodeBuffer(i16);
                         if (b.length > 0) chunks.push(new Uint8Array(b));
-                        
-                        if (i % (encodeChunkSize * 100) === 0) {
-                            setProg(Math.floor(60 + (i / outIdx) * 35));
-                            await new Promise(r => setTimeout(r, 0));
+                        if (i % 400000 === 0) {
+                            setProg(Math.floor(40 + (i / outIdx) * 55));
+                            await new Promise(r => setTimeout(r, 0)); 
                         }
                     }
-                    
                     chunks.push(new Uint8Array(enc.flush()));
-                    setProg(95);
-                    
-                    const blob = new Blob(chunks, { type: 'audio/mp3' });
-                    setUrl(URL.createObjectURL(blob));
+                    setUrl(URL.createObjectURL(new Blob(chunks, { type: 'audio/mp3' })));
                     setProg(100);
-                    
-                    showInterstitial();
-                    
-                    // Limpiar memoria
-                    output = null;
-                    
+                    // cuando el procesamiento termina
+showInterstitial();
                 } catch (e) { 
-                    console.error('Error procesando audio:', e);
-                    alert("Error al procesar el audio. Intenta con un archivo más pequeño."); 
-                    setProg(0);
+                    alert("Error al procesar."); 
                 }
-                
                 setIsProc(false);
-            };
-
-            const resetApp = () => {
-                if (url) URL.revokeObjectURL(url);
-                setUrl(null);
-                setFile(null);
-                setProg(0);
-                if (fileInputRef.current) {
-                    fileInputRef.current.value = '';
-                }
             };
 
             return (
                 <div className="min-h-screen flex flex-col items-center p-6 bg-[#090e1a]">
                     <div className="w-full max-w-md card-pro p-8 rounded-[2.5rem] mt-10 shadow-2xl border-t border-white/10">
-                        <h1 className="text-center text-2xl font-black mb-8 text-purple-400 italic uppercase tracking-tighter">
-                            Truncar Silencio Pro
-                        </h1>
+                        <h1 className="text-center text-2xl font-black mb-8 text-purple-400 italic uppercase tracking-tighter">Truncar Silencio Pro</h1>
                         
                         <div className="border-2 border-dashed border-purple-500/20 rounded-3xl p-8 text-center mb-6 bg-slate-900/50">
-                            <input 
-                                type="file" 
-                                onChange={handleFileChange}
-                                className="hidden" 
-                                id="aud" 
-                                accept="audio/*"
-                                ref={fileInputRef}
-                            />
+                            <input type="file" onChange={e => {setFile(e.target.files[0]); setUrl(null);}} className="hidden" id="aud" accept="audio/*" />
                             <label htmlFor="aud" className="cursor-pointer block">
                                 <span className="text-4xl block mb-2">{file ? "✅" : "📁"}</span>
-                                <span className="text-xs text-purple-200 font-bold uppercase truncate block px-4">
+                                <span className="text-xs text-purple-200 font-bold uppercase truncate block">
                                     {file ? file.name : "Seleccionar Audio"}
                                 </span>
-                                {file && (
-                                    <span className="text-[10px] text-gray-400 block mt-2">
-                                        {(file.size / 1024 / 1024).toFixed(2)} MB
-                                    </span>
-                                )}
                             </label>
                         </div>
 
                         {isProc && (
                             <div className="mb-6">
                                 <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden">
-                                    <div 
-                                        className="bg-purple-500 h-full progress-bar-fill" 
-                                        style={{ width: `${prog}%` }}
-                                    ></div>
+                                    <div className="bg-purple-500 h-full progress-bar-fill" style={{ width: `${prog}%` }}></div>
                                 </div>
-                                <p className="text-center text-[10px] mt-2 text-purple-300 font-bold">
-                                    {prog}% COMPLETADO
-                                </p>
+                                <p className="text-center text-[10px] mt-2 text-purple-300 font-bold">{prog}% COMPLETADO</p>
                             </div>
                         )}
 
                         {!url ? (
-                            <button 
-                                onClick={processAudio} 
-                                disabled={!file || isProc} 
-                                className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-30 disabled:cursor-not-allowed py-5 rounded-3xl font-black text-lg shadow-lg transition-all text-white border-b-4 border-purple-800 active:scale-95"
-                            >
+                            <button onClick={processAudio} disabled={!file || isProc} className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-30 py-5 rounded-3xl font-black text-lg shadow-lg transition-all text-white border-b-4 border-purple-800">
                                 {isProc ? "TRABAJANDO..." : "ELIMINAR SILENCIOS"}
                             </button>
                         ) : (
                             <div className="space-y-4 text-center">
-                                <button 
-                                    onClick={handleDownload} 
-                                    className="w-full bg-emerald-600 hover:bg-emerald-500 py-5 rounded-3xl font-black text-lg block shadow-lg border-b-4 border-emerald-800 text-white uppercase active:scale-95 transition-all"
-                                >
+                                <button onClick={handleDownload} className="w-full bg-emerald-600 hover:bg-emerald-500 py-5 rounded-3xl font-black text-lg block shadow-lg border-b-4 border-emerald-800 text-white uppercase">
                                     DESCARGAR MP3 ✅
                                 </button>
-                                <button 
-                                    onClick={resetApp} 
-                                    className="text-[10px] text-gray-500 hover:text-gray-300 uppercase font-bold transition-colors"
-                                >
-                                    Procesar otro
-                                </button>
+                                <button onClick={() => {setUrl(null); setProg(0);}} className="text-[10px] text-gray-500 uppercase font-bold">Procesar otro</button>
                             </div>
                         )}
                     </div>
 
                     <div className="mt-12 text-center pb-10">
-                        <p className="text-[10px] text-gray-500 uppercase font-bold tracking-[0.3em] mb-1">
-                            Desarrollado por
-                        </p>
-                        <p className="text-md font-black text-purple-100 tracking-widest uppercase">
-                            YEAN CARLOS GODOY GONZALEZ
-                        </p>
-                        <p className="text-[9px] text-gray-600 font-bold mt-2">
-                            © 2025 TODOS LOS DERECHOS RESERVADOS
-                        </p>
+                        <p className="text-[10px] text-gray-500 uppercase font-bold tracking-[0.3em] mb-1">Desarrollado por</p>
+                        <p className="text-md font-black text-purple-100 tracking-widest uppercase">YEAN CARLOS GODOY GONZALEZ</p>
+                        <p className="text-[9px] text-gray-600 font-bold mt-2">© 2025 TODOS LOS DERECHOS RESERVADOS</p>
                     </div>
                 </div>
             );
@@ -554,21 +174,6 @@
 
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
-    </script>
-
-    <!-- Registro del Service Worker -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(registration => {
-                        console.log('Service Worker registrado exitosamente:', registration.scope);
-                    })
-                    .catch(error => {
-                        console.log('Error al registrar Service Worker:', error);
-                    });
-            });
-        }
     </script>
 </body>
 </html>
