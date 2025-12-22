@@ -1,25 +1,11 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js"></script>
-<script>
-  window.adsbygoogle = window.adsbygoogle || [];
-</script>
-    <script>
-function showInterstitial() {
-  if (window.adsbygoogle) {
-    adsbygoogle.push({
-      google_ad_client: "ca-app-pub-3940256099942544",
-      enable_page_level_ads: true
-    });
-  }
-}
-</script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Truncar Silencio PRO</title>
-    <meta name="google-adsense-account" content="ca-app-pub-3940256099942544">
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-app-pub-3940256099942544" crossorigin="anonymous"></script>
+    <meta name="google-adsense-account" content="ca-pub-8057748170377702">
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8057748170377702" crossorigin="anonymous"></script>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#7c3aed">
     
@@ -117,8 +103,6 @@ function showInterstitial() {
                     chunks.push(new Uint8Array(enc.flush()));
                     setUrl(URL.createObjectURL(new Blob(chunks, { type: 'audio/mp3' })));
                     setProg(100);
-                    // cuando el procesamiento termina
-showInterstitial();
                 } catch (e) { 
                     alert("Error al procesar."); 
                 }
