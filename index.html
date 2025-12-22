@@ -24,7 +24,7 @@
 <body>
     <div id="root"></div>
 
-<script type="text/babel">
+    <script type="text/babel">
         const { useState, useRef, useEffect } = React;
 
         function App() {
@@ -34,23 +34,14 @@
             const [url, setUrl] = useState(null);
             const audioCtx = useRef(null);
 
+            // Valores fijos para máxima estabilidad
             const THRESHOLD = -30; 
             const DURATION = 0.6;
 
-            // ESTA ES LA FUNCIÓN QUE DEBE IR AQUÍ (No en sw.js)
-            const handleDownload = (e) => {
-                e.preventDefault();
-                if (!url) return;
-
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = 'audio_sin_silencio.mp3';
-                document.body.appendChild(link);
-                link.click();
-                setTimeout(() => {
-                    document.body.removeChild(link);
-                }, 100);
-            };
+            useEffect(() => {
+                console.log("%c¡PROPIEDAD PRIVADA!", "color: red; font-size: 20px; font-weight: bold;");
+                console.log("Desarrollado por YEAN CARLOS GODOY GONZALEZ");
+            }, []);
 
             const processAudio = async () => {
                 if (!file) return;
@@ -62,6 +53,7 @@
                     const data = buf.getChannelData(0);
                     const rate = buf.sampleRate;
                     
+                    // Cálculo de silencio corregido
                     const limit = Math.pow(10, THRESHOLD / 20);
                     const minSilence = Math.floor(DURATION * rate);
                     
@@ -104,7 +96,8 @@
                     setUrl(URL.createObjectURL(new Blob(chunks, { type: 'audio/mp3' })));
                     setProg(100);
                 } catch (e) { 
-                    alert("Error al procesar."); 
+                    console.error(e);
+                    alert("Error de procesamiento. Intenta con un archivo más pequeño."); 
                 }
                 setIsProc(false);
             };
@@ -139,9 +132,9 @@
                             </button>
                         ) : (
                             <div className="space-y-4 text-center">
-                                <button onClick={handleDownload} className="w-full bg-emerald-600 hover:bg-emerald-500 py-5 rounded-3xl font-black text-lg block shadow-lg border-b-4 border-emerald-800 text-white uppercase">
+                                <a href={url} download="audio_sin_silencio.mp3" className="w-full bg-emerald-600 hover:bg-emerald-500 py-5 rounded-3xl font-black text-lg block shadow-lg border-b-4 border-emerald-800">
                                     DESCARGAR MP3 ✅
-                                </button>
+                                </a>
                                 <button onClick={() => {setUrl(null); setProg(0);}} className="text-[10px] text-gray-500 uppercase font-bold">Procesar otro</button>
                             </div>
                         )}
