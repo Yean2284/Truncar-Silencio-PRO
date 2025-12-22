@@ -7,12 +7,14 @@
     </script>
     <script>
     function showInterstitial() {
-      if (window.adsbygoogle) {
-        adsbygoogle.push({
-          google_ad_client: "ca-app-pub-3940256099942544",
-          enable_page_level_ads: true
-        });
-      }
+      try {
+          if (window.adsbygoogle) {
+            adsbygoogle.push({
+              google_ad_client: "ca-app-pub-3940256099942544",
+              enable_page_level_ads: true
+            });
+          }
+      } catch(e) { console.log("Ad error ignored"); }
     }
     </script>
     <meta charset="UTF-8">
@@ -54,106 +56,133 @@
             const handleDownload = (e) => {
                 e.preventDefault();
                 if (!url) return;
-
                 const link = document.createElement('a');
                 link.href = url;
                 link.download = 'audio_sin_silencio.mp3';
                 document.body.appendChild(link);
                 link.click();
-                setTimeout(() => {
-                    document.body.removeChild(link);
-                }, 100);
+                setTimeout(() => document.body.removeChild(link), 100);
+            };
+
+            // Función auxiliar para convertir Float32 a Int16 (necesario para MP3)
+            // sin crear arrays gigantes
+            const convertToInt16 = (float32Array) => {
+                const l = float32Array.length;
+                const i16 = new Int16Array(l);
+                for(let i=0; i<l; i++) {
+                    const v = Math.max(-1, Math.min(1, float32Array[i]));
+                    i16[i] = v < 0 ? v * 0x8000 : v * 0x7FFF;
+                }
+                return i16;
             };
 
             const processAudio = async () => {
                 if (!file) return;
                 setIsProc(true);
-                setProg(2);
+                setProg(1);
                 
-                // Limpieza de memoria previa
                 if (url) URL.revokeObjectURL(url);
                 setUrl(null);
 
                 try {
-                    // 1. Configurar AudioContext robusto
+                    // 1. Setup AudioContext
                     const AudioContext = window.AudioContext || window.webkitAudioContext;
                     if (!audioCtx.current) audioCtx.current = new AudioContext();
-                    
-                    // Resume necesario para móviles modernos
-                    if (audioCtx.current.state === 'suspended') {
-                        await audioCtx.current.resume();
-                    }
+                    if (audioCtx.current.state === 'suspended') await audioCtx.current.resume();
 
-                    // 2. Decodificación
+                    setProg(5);
+
+                    // 2. Decodificar (Esto es lo único que gasta RAM ahora)
                     const arrayBuffer = await file.arrayBuffer();
                     const buf = await audioCtx.current.decodeAudioData(arrayBuffer);
-                    const data = buf.getChannelData(0); // Mono
-                    const rate = buf.sampleRate; // DETECTA 48kHz o 44.1kHz automáticamente
+                    const data = buf.getChannelData(0); 
+                    const rate = buf.sampleRate;
                     
                     const limit = Math.pow(10, THRESHOLD / 20);
                     const minSilence = Math.floor(DURATION * rate);
                     
-                    let output = new Float32Array(data.length);
-                    let outIdx = 0;
+                    // 3. Preparar Encoder MP3
+                    const mp3enc = new lamejs.Mp3Encoder(1, rate, 128);
+                    const chunks = [];
                     
-                    // 3. Procesamiento de silencios con pausas para evitar congelamiento
-                    const processBatch = 200000;
+                    // Buffer temporal pequeño para codificar
+                    // NO creamos un array "output" gigante, codificamos al vuelo.
                     
-                    for (let i = 0; i < data.length; ) {
+                    let currentChunk = [];
+                    const CHUNK_SIZE = 1152; // Tamaño de bloque mp3 estándar
+                    
+                    let i = 0;
+                    let lastUpdate = Date.now();
+                    const totalLen = data.length;
+
+                    // Bucle principal optimizado
+                    while (i < totalLen) {
+                        
+                        // Lógica de detección de silencio
                         if (Math.abs(data[i]) < limit) {
                             let s = i;
-                            while (i < data.length && Math.abs(data[i]) < limit) i++;
-                            if ((i - s) >= minSilence) {
-                                const m = Math.floor(0.1 * rate);
-                                for (let j = 0; j < m; j++) output[outIdx++] = 0;
+                            // Buscar fin del silencio
+                            while (i < totalLen && Math.abs(data[i]) < limit) i++;
+                            
+                            const silenceLen = i - s;
+                            
+                            if (silenceLen >= minSilence) {
+                                // Es silencio largo: IGNORAR (Truncar), insertar solo una pizca
+                                // para suavizar (0.05s)
+                                const bridge = Math.floor(0.05 * rate);
+                                for (let k = 0; k < bridge; k++) currentChunk.push(0);
                             } else {
-                                for (let j = s; j < i; j++) output[outIdx++] = data[j];
+                                // Es silencio corto: MANTENER
+                                for (let k = s; k < i; k++) currentChunk.push(data[k]);
                             }
                         } else {
-                            output[outIdx++] = data[i]; i++;
+                            // Es sonido: MANTENER
+                            currentChunk.push(data[i]);
+                            i++;
                         }
-                        
-                        // Pausa para que el navegador respire
-                        if (i % processBatch === 0) {
-                            setProg(5 + Math.floor((i / data.length) * 45)); // 5% a 50%
+
+                        // Si el buffer temporal está lleno, codificar a MP3 y limpiar RAM
+                        while (currentChunk.length >= CHUNK_SIZE) {
+                            const subarray = new Float32Array(currentChunk.slice(0, CHUNK_SIZE));
+                            currentChunk = currentChunk.slice(CHUNK_SIZE); // Mantener el resto
+                            
+                            const i16 = convertToInt16(subarray);
+                            const mp3buf = mp3enc.encodeBuffer(i16);
+                            if (mp3buf.length > 0) chunks.push(mp3buf);
+                        }
+
+                        // Actualizar UI y liberar hilo principal cada 500ms
+                        // (Evita el "Oh No" por timeout)
+                        if (Date.now() - lastUpdate > 500) {
+                            const p = Math.floor((i / totalLen) * 95);
+                            setProg(p);
                             await new Promise(r => setTimeout(r, 0));
+                            lastUpdate = Date.now();
                         }
                     }
-                    
-                    // Liberar memoria del array original grande
-                    const trimmedOutput = output.subarray(0, outIdx);
-                    output = null; // Garbage collection hint
 
-                    // 4. Codificación MP3 Correcta
-                    const enc = new lamejs.Mp3Encoder(1, rate, 128);
-                    const chunks = [];
-                    const sampleBlock = 1152;
-
-                    for (let i = 0; i < trimmedOutput.length; i += sampleBlock) {
-                        const chunk = trimmedOutput.subarray(i, i + sampleBlock);
-                        const i16 = new Int16Array(chunk.length);
-                        for (let j = 0; j < chunk.length; j++) {
-                            const v = Math.max(-1, Math.min(1, chunk[j]));
-                            i16[j] = v < 0 ? v * 0x8000 : v * 0x7FFF;
-                        }
-                        const b = enc.encodeBuffer(i16);
-                        if (b.length > 0) chunks.push(new Uint8Array(b));
-                        
-                        // Actualizar UI
-                        if (i % (sampleBlock * 200) === 0) {
-                            setProg(50 + Math.floor((i / trimmedOutput.length) * 50));
-                            await new Promise(r => setTimeout(r, 0)); 
-                        }
+                    // Procesar lo que quede en el buffer
+                    if (currentChunk.length > 0) {
+                         const subarray = new Float32Array(currentChunk);
+                         const i16 = convertToInt16(subarray);
+                         const mp3buf = mp3enc.encodeBuffer(i16);
+                         if (mp3buf.length > 0) chunks.push(mp3buf);
                     }
-                    
-                    chunks.push(new Uint8Array(enc.flush()));
-                    setUrl(URL.createObjectURL(new Blob(chunks, { type: 'audio/mp3' })));
+
+                    // Finalizar MP3
+                    const mp3last = mp3enc.flush();
+                    if (mp3last.length > 0) chunks.push(mp3last);
+
+                    // Crear Blob
+                    const blob = new Blob(chunks, { type: 'audio/mp3' });
+                    setUrl(URL.createObjectURL(blob));
                     setProg(100);
+                    
                     showInterstitial();
 
                 } catch (e) { 
                     console.error(e);
-                    alert("Error: El archivo puede ser incompatible o demasiado grande para la memoria del dispositivo."); 
+                    alert("Error: Memoria insuficiente. Intenta con un audio más corto o de menor calidad."); 
                 }
                 setIsProc(false);
             };
